@@ -2,21 +2,23 @@
 //la foto puede ser tomada por camara o de la galeria
 //se usa una api que pasa la imagen a texto y de ahi se 
 //sacan los valores y se mandan a la pantalla de verificacion
-import React, { useState, useEffect } from "react";
-import { Button, StyleSheet, Text, SafeAreaView, View } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { Button, StyleSheet, Text, SafeAreaView, View, ActivityIndicator } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 
 export default function RegisterWithCamera({ navigation }) {
   const [image, setImage] = useState(null);
-  const [missingValue, setMissingValue] = useState("");
+  const [loading, setLoading] = useState(false); // State to manage loading indicator
+  const loadingRef = useRef(null);
 
   useEffect(() => {
     // Reset state when the component mounts
     setImage(null);
-    setMissingValue("");
+    setLoading(false);
   }, []);
 
   const pickImageGallery = async () => {
+    setLoading(true); // Show loading indicator
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
@@ -25,18 +27,14 @@ export default function RegisterWithCamera({ navigation }) {
     });
     if (!result.canceled) {
       const extractedValues = await performOCR(result.assets[0]);
-      if (valuesAreValid(extractedValues)) {
-        setImage(result.assets[0].uri);
-        log(result.assets[0].uri);
-        navigation.navigate('RegisterVerification', { ...extractedValues, imageUri: result.assets[0].uri });
-      } else {
-        // Handle the case when values are not valid
-        setModalVisible(true);
-      }
+      setImage(result.assets[0].uri);
+      navigation.navigate('RegisterVerification', { ...extractedValues, imageUri: result.assets[0].uri });
     }
+    setLoading(false); // Hide loading indicator
   };
-  
+
   const pickImageCamera = async () => {
+    setLoading(true); // Show loading indicator
     let result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
@@ -45,14 +43,10 @@ export default function RegisterWithCamera({ navigation }) {
     });
     if (!result.canceled) {
       const extractedValues = await performOCR(result.assets[0]);
-      if (valuesAreValid(extractedValues)) {
-        setImage(result.assets[0].uri);
-        navigation.navigate('RegisterVerification', { ...extractedValues, imageUri: result.assets[0].uri });
-      } else {
-        // Handle the case when values are not valid
-        setModalVisible(true);
-      }
+      setImage(result.assets[0].uri);
+      navigation.navigate('RegisterVerification', { ...extractedValues, imageUri: result.assets[0].uri });
     }
+    setLoading(false); // Hide loading indicator
   };
 
   const performOCR = async (file) => {
@@ -60,107 +54,77 @@ export default function RegisterWithCamera({ navigation }) {
       const myHeaders = new Headers();
       myHeaders.append("apikey", "FEmvQr5uj99ZUvk3essuYb6P5lLLBS20");
       myHeaders.append("Content-Type", "multipart/form-data");
-  
-      const raw = file;
+
       const requestOptions = {
         method: "POST",
         redirect: "follow",
         headers: myHeaders,
-        body: raw,
+        body: file,
       };
-  
+
       const response = await fetch("https://api.apilayer.com/image_to_text/upload", requestOptions);
       const result = await response.json();
-  
+
       console.log("Extracted Text:", result);
-  
-      // Check if any text is detected
+
       if (!result.annotations || result.annotations.length === 0) {
         console.log("No text detected");
-        // Set imageUri to the original image URI
         return { imageUri: file.uri };
       }
-  
-      let cleanedAmount = null;
+
       let referencia = null;
+      let cleanedAmount = null;
       let date = null;
-  
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        const match = result["all_text"].match(/(?:referencia|operacion|recibo)\D*(\d+)/i);
-  
-        if (match) {
-          referencia = match[1].charAt(0).toUpperCase() + match[1].slice(1);
-          break;
-        }
-  
-        if (attempt === 3) {
-          console.log("Referencia, Operacion, or Recibo number not found");
-          setMissingValue("Referencia, Operacion, or Recibo");
-          // Set imageUri to the original image URI
-          return { imageUri: file.uri };
+
+      const referenceMatches = result["all_text"].match(/\D(\d{9,})(?!\d)|(\d{9}(?=\D|$))/g);
+      if (referenceMatches) {
+        for (const match of referenceMatches) {
+          const digits = match.replace(/\D/g, ''); // Extract digits from the match
+          if (!isNaN(digits) && digits.length === 11) {
+            continue; // Skip this match and proceed to the next one if it has exactly 11 digits
+          }
+          if (digits.length >= 9) { // Check if the digits have 9 or more digits
+            referencia = digits;
+            break; // Break loop once a valid reference number is found
+          }
         }
       }
-  
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        const amountMatch = result["all_text"].match(/(\d+\.\d+)/);
-  
-        if (amountMatch) {
-          cleanedAmount = parseFloat(amountMatch[0].replace(',', '.'));
-          break;
-        }
-  
-        if (attempt === 3) {
-          console.log("Amount with decimals not found");
-          // Set imageUri to the original image URI
-          return { imageUri: file.uri };
-        }
+
+      const amountMatch = result["all_text"].match(/\b\d{1,3}(?:,\d{3})*(?:,\d{1,2})\b/);
+      if (amountMatch) {
+        cleanedAmount = parseFloat(amountMatch[0].replace(',', '.'));
+      } else {
+        console.log("Amount with decimals not found");
+        return { imageUri: file.uri };
       }
-  
+
       const dateMatches = result["all_text"].match(/(\d{2}[-/]\d{2}[-/]\d{4})/);
-  
       if (dateMatches) {
         date = dateMatches[0];
       } else {
         console.log("Date values not found");
       }
-  
+
       return {
         referencia,
         amount: cleanedAmount,
         date,
-        imageUri: file.uri, // Set imageUri to the original image URI
+        imageUri: file.uri,
       };
     } catch (error) {
       console.error("Error in performOCR:", error);
-      setMissingValue("Referencia, Operacion, or Recibo");
-      // Set imageUri to the original image URI
       return { imageUri: file.uri };
     }
-  };
-  
-  const handleImage = async (imageData) => {
-    const extractedValues = await performOCR(imageData);
-
-    if (valuesAreValid(extractedValues)) {
-      setImage(imageData.uri);
-      navigation.navigate('RegisterVerification', extractedValues);
-    } else {
-      console.log("Image sent to RegisterVerification");
-      navigation.navigate('RegisterVerification', { image: imageData.uri });
-    }
-  };
-
-  const valuesAreValid = (extractedValues) => {
-    return (
-      extractedValues.referencia !== null &&
-      extractedValues.amount !== null &&
-      extractedValues.date !== null
-    );
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.heading2}>Elige una opción</Text>
+      {loading ? (
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color="#F99417" />
+        </View>
+      ) : null}
       <Button
         title="Elige una foto de tu galería"
         onPress={pickImageGallery}
@@ -199,5 +163,14 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
     paddingTop: 0,
     marginBottom: 20,
+  },
+  loading: {
+    position: "absolute",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
   },
 });

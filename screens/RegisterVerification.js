@@ -11,26 +11,25 @@ const RegisterVerification = () => {
   const navigation = useNavigation();
   const route = useRoute();
 
-  const [date, setDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const formattedDate = route.params?.date
+  ? new Date(
+      parseInt(route.params.date.split('/')[2]), // Year
+      parseInt(route.params.date.split('/')[1]) - 1, // Month (subtract 1 as months are zero-based)
+      parseInt(route.params.date.split('/')[0]) // Day
+    )
+  : new Date();
+const [date, setDate] = useState(formattedDate);
 
-  const [referenciaValue, setReferenciaValue] = useState(route.params?.referencia || '');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  const [referenciaValue, setReferenciaValue] = useState(route.params?.referencia?.toString() || '');
   const [telefonoValue, setTelefonoValue] = useState('');
-  const [montoValue, setMontoValue] = useState(route.params?.amount || '');
+  const [montoValue, setMontoValue] = useState(route.params?.amount?.toString() || '');
+
   const [imageUri, setImageUri] = useState(route.params?.imageUri || ''); // Extract the image URI
 
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    setDate(new Date(today));
-  }, []);
 
-  const handleInputChange = value => {
-    setDate(new Date(value));
-  };
-
-  const showDatepicker = () => {
-    setShowDatePicker(true);
-  };
 
   const handleDateSelect = (event, selectedDate) => {
     if (selectedDate === undefined) {
@@ -42,6 +41,27 @@ const RegisterVerification = () => {
     setDate(selectedDate);
     setShowDatePicker(false);
   };
+
+  const showDatepicker = () => {
+    setShowDatePicker(true);
+  };
+
+  const handleButtonClick = () => {
+    if (!date) {
+      setShowModal(true);
+      return;
+    }
+
+    const formattedDate = moment(date).format('YYYY-MM-DD');
+    navigation.navigate('Payments', {
+      data: formattedDate,
+    });
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+  };
+
 
   const goBack = () => {
     navigation.goBack();
@@ -56,7 +76,7 @@ const RegisterVerification = () => {
     // Save payment details to AsyncStorage along with the image URI
     const paymentDetails = {
       date: date.toISOString(),
-      referencia: referenciaValue,
+      referencia: referenciaValue.slice(-4),
       telefono: telefonoValue,
       monto: montoValue,
       imageUri: imageUri, // Save the image URI
@@ -69,7 +89,7 @@ const RegisterVerification = () => {
 
       // Add the new payment to the list
       existingPayments.push(paymentDetails);
-(paymentDetails);
+      (paymentDetails);
       // Save the updated list back to AsyncStorage
       await AsyncStorage.setItem('payments', JSON.stringify(existingPayments));
 
@@ -84,18 +104,24 @@ const RegisterVerification = () => {
     <View style={styles.container}>
       <Text style={styles.title}>Registro de Pago</Text>
 
-      <View style={{ width: '80%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <TextInput
-          style={styles.dateInput}
-          placeholder="Fecha de Pago"
-          value={date.toISOString().split('T')[0]}
-          onTouchStart={showDatepicker}
-          editable={false} // Disable manual input
-        />
-        <TouchableOpacity onPress={showDatepicker} style={{ alignItems: 'center' }}>
+      <View style={styles.inputContainer}>
+        <TouchableOpacity style={styles.dateInput} onPress={showDatepicker}>
+          <Text style={{ flex: 1 }}>
+            {date.toLocaleDateString('es-ES') || 'Ingrese la fecha'}
+          </Text>
           <Ionicons name="calendar" size={24} color="black" />
         </TouchableOpacity>
       </View>
+
+      {showDatePicker && (
+        <DateTimePicker
+          testID="dateTimePicker"
+          value={date}
+          mode="date"
+          display="default"
+          onChange={handleDateSelect}
+        />
+      )}
 
       {Platform.OS === 'ios' && showDatePicker && (
         <DateTimePicker
@@ -122,10 +148,10 @@ const RegisterVerification = () => {
           <Text style={styles.tableLeftTitle}>Referencia:</Text>
           <TextInput
             style={styles.tableRightItem}
-            value={referenciaValue}
-            onChangeText={text => setReferenciaValue(text)}
+            value={referenciaValue.slice(-4)} // Display only the last 4 digits
+            onChangeText={text => setReferenciaValue(text)} // Keep the original logic for handling the value change
             placeholder="Ingrese la referencia"
-            keyboardType="numeric" 
+            keyboardType="numeric"
           />
         </View>
         <View style={styles.tableRowAlternate}>
@@ -135,7 +161,7 @@ const RegisterVerification = () => {
             value={telefonoValue}
             onChangeText={text => setTelefonoValue(text)}
             placeholder="Ingrese el nro. de teléfono"
-            keyboardType="numeric" 
+            keyboardType="numeric"
           />
         </View>
         <View style={styles.tableRow}>
@@ -186,14 +212,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   dateInput: {
-    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     height: 40,
     borderColor: 'gray',
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 10,
     backgroundColor: '#F5F5F5', // Background color
-    marginRight: 10,
+    flex: 1,
+    justifyContent: 'space-between',
   },
   tableContainer: {
     backgroundColor: '#C4C3CF',
