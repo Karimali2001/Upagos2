@@ -21,10 +21,16 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#363062"
-      }
+      },
+      "package": "com.karimali.Upagos"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "04b59ae9-5e8a-4fcf-8322-1551e33dae30"
+      }
     }
   }
 }
