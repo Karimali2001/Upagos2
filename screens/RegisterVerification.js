@@ -1,7 +1,7 @@
 //esta pagina donde se mandan los datos o se registran manualmente
 //para ser guardados en almacenamiento asincrono
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -17,6 +17,7 @@ const RegisterVerification = () => {
   const [referenciaValue, setReferenciaValue] = useState(route.params?.referencia || '');
   const [telefonoValue, setTelefonoValue] = useState('');
   const [montoValue, setMontoValue] = useState(route.params?.amount || '');
+  const [imageUri, setImageUri] = useState(route.params?.imageUri || ''); // Extract the image URI
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -52,12 +53,13 @@ const RegisterVerification = () => {
       return;
     }
 
-    // Save payment details to AsyncStorage
+    // Save payment details to AsyncStorage along with the image URI
     const paymentDetails = {
       date: date.toISOString(),
       referencia: referenciaValue,
       telefono: telefonoValue,
       monto: montoValue,
+      imageUri: imageUri, // Save the image URI
     };
 
     try {
@@ -67,7 +69,7 @@ const RegisterVerification = () => {
 
       // Add the new payment to the list
       existingPayments.push(paymentDetails);
-
+(paymentDetails);
       // Save the updated list back to AsyncStorage
       await AsyncStorage.setItem('payments', JSON.stringify(existingPayments));
 

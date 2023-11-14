@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
+import moment from 'moment';
 
 const Queries = () => {
   const navigation = useNavigation();
@@ -29,7 +30,8 @@ const Queries = () => {
 
   const handleButtonClick = () => {
     if (date) {
-      const formattedDate = date.toLocaleDateString('es-ES'); // Format: DD-MM-YYYY
+      // Format the date in YYYY-MM-DD
+      const formattedDate = moment(date).format('YYYY-MM-DD');
       navigation.navigate('Payments', {
         data: formattedDate,
       });

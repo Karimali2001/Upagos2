@@ -3,30 +3,29 @@
 //se filtran los pagos por la fecha dada y se muestran
 //los pagos se pueden eliminar si existio algun error 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Image, ScrollView } from 'react-native';
 import moment from 'moment';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import * as MediaLibrary from 'expo-media-library';
 
 const Payments = ({ route, navigation }) => {
-  const data = route.params.data;
-  const selectedDate = moment(data).format('YYYY-MM-DD');
+  const { data } = route.params;
+  const selectedDate = moment(data, 'YYYY-MM-DD').format('YYYY-MM-DD');
 
   const [payments, setPayments] = useState([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState('');
 
   useEffect(() => {
     const fetchPayments = async () => {
       try {
-        // Fetch payments from AsyncStorage
         const paymentsData = await AsyncStorage.getItem('payments');
         if (paymentsData) {
           const allPayments = JSON.parse(paymentsData);
-
-          // Filter payments for the selected date
           const filteredPayments = allPayments.filter(payment =>
             moment(payment.date).isSame(selectedDate, 'day')
           );
-
           setPayments(filteredPayments);
         }
       } catch (error) {
@@ -41,10 +40,7 @@ const Payments = ({ route, navigation }) => {
     try {
       const updatedPayments = [...payments];
       const deletedPayment = updatedPayments.splice(index, 1)[0];
-
-      // Save the updated payments to AsyncStorage
       await AsyncStorage.setItem('payments', JSON.stringify(updatedPayments));
-
       setPayments(updatedPayments);
 
       Alert.alert(
@@ -56,20 +52,57 @@ const Payments = ({ route, navigation }) => {
     }
   };
 
+  const viewImage = (imageUri) => {
+    setSelectedImageUri(imageUri);
+    setModalVisible(true);
+  };
+
+  const closeModal = () => {
+    setModalVisible(false);
+    setSelectedImageUri('');
+  };
+
+  const saveToGallery = async () => {
+    if (selectedImageUri) {
+      try {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+
+        if (status === 'granted') {
+          await MediaLibrary.saveToLibraryAsync(selectedImageUri);
+          Alert.alert('Imagen guardada', 'La imagen se ha guardado en la galería.');
+        } else {
+          Alert.alert('Permiso denegado', 'No se otorgó permiso para acceder a la galería.');
+        }
+      } catch (error) {
+        console.error('Error saving image to gallery:', error);
+        Alert.alert('Error', 'Ocurrió un error al intentar guardar la imagen en la galería.');
+      }
+    }
+  };
+
   const renderRow = ({ item, index }) => {
     const rowStyle = index % 2 === 0 ? styles.rowEven : styles.rowOdd;
+
     return (
       <View style={[styles.row, rowStyle]}>
-        <Text style={styles.rowData}>{item.referencia}</Text>
-        <Text style={styles.rowData}>{item.telefono}</Text>
-        <Text style={styles.rowData}>{item.monto}</Text>
-        <TouchableOpacity onPress={() => showDeleteConfirmation(index)}>
-          <Ionicons name="trash-outline" size={24} color="red" />
-        </TouchableOpacity>
+        <View style={styles.dataColumn}>
+          <Text style={styles.rowData}>{item.referencia}</Text>
+          <Text style={styles.rowData}>{item.telefono}</Text>
+          <Text style={styles.rowData}>{item.monto}</Text>
+        </View>
+        <View style={styles.actionColumn}>
+          <TouchableOpacity onPress={() => showDeleteConfirmation(index)}>
+            <Ionicons name="trash-outline" size={24} color="red" style={styles.actionIcon} />
+          </TouchableOpacity>
+          {item.imageUri && (
+            <TouchableOpacity onPress={() => viewImage(item.imageUri)}>
+              <Ionicons name="eye" size={24} color="green" style={styles.actionIcon} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   };
-
   const showDeleteConfirmation = (index) => {
     Alert.alert(
       'Eliminar pago',
@@ -101,6 +134,7 @@ const Payments = ({ route, navigation }) => {
           <Text style={styles.tableTitle}>Referencia</Text>
           <Text style={styles.tableTitle}>Nro. Celular</Text>
           <Text style={styles.tableTitle}>Monto (Bs)</Text>
+          <Text style={styles.tableTitle}>Acción</Text>
         </View>
         <FlatList
           data={payments}
@@ -111,10 +145,40 @@ const Payments = ({ route, navigation }) => {
       <TouchableOpacity style={styles.backButton} onPress={goBack}>
         <Text style={styles.backButtonText}>Regresar</Text>
       </TouchableOpacity>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={closeModal}
+      >
+        <TouchableOpacity
+          style={styles.modalContainer}
+          activeOpacity={1} // Touching the modal won't close it
+          onPress={closeModal}
+        >
+          <Ionicons
+            name="close"
+            size={32}
+            color="white"
+            style={styles.closeIcon}
+            onPress={closeModal}
+          />
+          <ScrollView>
+            <Image
+              source={{ uri: selectedImageUri }}
+              style={styles.modalImage}
+              resizeMode="contain"
+            />
+          </ScrollView>
+          <TouchableOpacity style={styles.saveButton} onPress={saveToGallery}>
+            <Text style={styles.saveButtonText}>Guardar en la galería</Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -155,6 +219,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#8280A3',
   },
   tableTitle: {
+    fontSize: 13,
     fontWeight: 'bold',
     flex: 1,
     textAlign: 'center',
@@ -174,6 +239,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
   },
   rowData: {
+    fontSize: 12,
     flex: 1,
     textAlign: 'center',
   },
@@ -188,7 +254,55 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
+
   trashIcon: {
+    marginLeft: 10,
+  },
+  eyeIcon: {
+    marginLeft: 10,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+  closeIcon: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+  },
+  modalImage: {
+    width: '100%',
+    height: 500,
+    marginTop: 20,
+  },
+  saveButton: {
+    backgroundColor: '#4285F4',
+    padding: 15,
+    borderRadius: 10,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  dataColumn: {
+    flex: 3, // Adjust the flex value as needed
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  actionColumn: {
+    flex: 1, // Adjust the flex value as needed
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  actionIcon: {
     marginLeft: 10,
   },
 });

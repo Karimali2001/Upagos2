@@ -2,14 +2,19 @@
 //la foto puede ser tomada por camara o de la galeria
 //se usa una api que pasa la imagen a texto y de ahi se 
 //sacan los valores y se mandan a la pantalla de verificacion
-import React, { useState } from "react";
-import { Button, StyleSheet, Text, SafeAreaView, Modal, View } from "react-native";
+import React, { useState, useEffect } from "react";
+import { Button, StyleSheet, Text, SafeAreaView, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 
 export default function RegisterWithCamera({ navigation }) {
   const [image, setImage] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
   const [missingValue, setMissingValue] = useState("");
+
+  useEffect(() => {
+    // Reset state when the component mounts
+    setImage(null);
+    setMissingValue("");
+  }, []);
 
   const pickImageGallery = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -22,13 +27,15 @@ export default function RegisterWithCamera({ navigation }) {
       const extractedValues = await performOCR(result.assets[0]);
       if (valuesAreValid(extractedValues)) {
         setImage(result.assets[0].uri);
-        navigation.navigate('RegisterVerification', extractedValues);
+        log(result.assets[0].uri);
+        navigation.navigate('RegisterVerification', { ...extractedValues, imageUri: result.assets[0].uri });
       } else {
+        // Handle the case when values are not valid
         setModalVisible(true);
       }
     }
   };
-
+  
   const pickImageCamera = async () => {
     let result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -40,8 +47,9 @@ export default function RegisterWithCamera({ navigation }) {
       const extractedValues = await performOCR(result.assets[0]);
       if (valuesAreValid(extractedValues)) {
         setImage(result.assets[0].uri);
-        navigation.navigate('RegisterVerification', extractedValues);
+        navigation.navigate('RegisterVerification', { ...extractedValues, imageUri: result.assets[0].uri });
       } else {
+        // Handle the case when values are not valid
         setModalVisible(true);
       }
     }
@@ -52,7 +60,7 @@ export default function RegisterWithCamera({ navigation }) {
       const myHeaders = new Headers();
       myHeaders.append("apikey", "FEmvQr5uj99ZUvk3essuYb6P5lLLBS20");
       myHeaders.append("Content-Type", "multipart/form-data");
-
+  
       const raw = file;
       const requestOptions = {
         method: "POST",
@@ -60,48 +68,85 @@ export default function RegisterWithCamera({ navigation }) {
         headers: myHeaders,
         body: raw,
       };
-
+  
       const response = await fetch("https://api.apilayer.com/image_to_text/upload", requestOptions);
       const result = await response.json();
-
+  
       console.log("Extracted Text:", result);
-
-      const match = result["all_text"].match(/(?:referencia|operacion|recibo)\D*(\d+)/i);
-
-      if (match) {
-        console.log(`${match[1].charAt(0).toUpperCase() + match[1].slice(1)}`);
-      } else {
-        console.log("Referencia, Operacion, or Recibo number not found");
-        setMissingValue("Referencia, Operacion, or Recibo");
-        setModalVisible(true);
+  
+      // Check if any text is detected
+      if (!result.annotations || result.annotations.length === 0) {
+        console.log("No text detected");
+        // Set imageUri to the original image URI
+        return { imageUri: file.uri };
       }
-
-      const amountMatch = result["all_text"].match(/(\d+\.\d+)/);
-
-      if (amountMatch) {
-        console.log("Amount with Decimals:", amountMatch[0]);
-      } else {
-        console.log("Amount with decimals not found");
+  
+      let cleanedAmount = null;
+      let referencia = null;
+      let date = null;
+  
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const match = result["all_text"].match(/(?:referencia|operacion|recibo)\D*(\d+)/i);
+  
+        if (match) {
+          referencia = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+          break;
+        }
+  
+        if (attempt === 3) {
+          console.log("Referencia, Operacion, or Recibo number not found");
+          setMissingValue("Referencia, Operacion, or Recibo");
+          // Set imageUri to the original image URI
+          return { imageUri: file.uri };
+        }
       }
-
+  
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const amountMatch = result["all_text"].match(/(\d+\.\d+)/);
+  
+        if (amountMatch) {
+          cleanedAmount = parseFloat(amountMatch[0].replace(',', '.'));
+          break;
+        }
+  
+        if (attempt === 3) {
+          console.log("Amount with decimals not found");
+          // Set imageUri to the original image URI
+          return { imageUri: file.uri };
+        }
+      }
+  
       const dateMatches = result["all_text"].match(/(\d{2}[-/]\d{2}[-/]\d{4})/);
-
+  
       if (dateMatches) {
-        console.log("Date Values:", dateMatches[0]);
+        date = dateMatches[0];
       } else {
         console.log("Date values not found");
       }
-
+  
       return {
-        referencia: match ? match[1].charAt(0).toUpperCase() + match[1].slice(1) : null,
-        amount: amountMatch ? amountMatch[0] : null,
-        date: dateMatches ? dateMatches[0] : null,
+        referencia,
+        amount: cleanedAmount,
+        date,
+        imageUri: file.uri, // Set imageUri to the original image URI
       };
     } catch (error) {
       console.error("Error in performOCR:", error);
       setMissingValue("Referencia, Operacion, or Recibo");
-      setModalVisible(true);
-      return {};
+      // Set imageUri to the original image URI
+      return { imageUri: file.uri };
+    }
+  };
+  
+  const handleImage = async (imageData) => {
+    const extractedValues = await performOCR(imageData);
+
+    if (valuesAreValid(extractedValues)) {
+      setImage(imageData.uri);
+      navigation.navigate('RegisterVerification', extractedValues);
+    } else {
+      console.log("Image sent to RegisterVerification");
+      navigation.navigate('RegisterVerification', { image: imageData.uri });
     }
   };
 
@@ -131,28 +176,6 @@ export default function RegisterWithCamera({ navigation }) {
         onPress={() => navigation.goBack()}
         color="#F99417" // Orange color
       />
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => {
-          setModalVisible(!modalVisible);
-        }}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalText}>
-              Uno de los valores no fue encontrado.{"\n"}
-              Vuelve a intentarlo.
-            </Text>
-            <Button
-              title="Ok"
-              color="#F99417"
-              onPress={() => setModalVisible(!modalVisible)}
-            />
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -176,21 +199,5 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
     paddingTop: 0,
     marginBottom: 20,
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "white",
-    padding: 20,
-    borderRadius: 10,
-    elevation: 5,
-  },
-  modalText: {
-    marginBottom: 10,
-    fontSize: 16,
-    textAlign: "center",
   },
 });
